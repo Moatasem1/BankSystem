@@ -60,7 +60,6 @@ class DatabaseUtility
      * @throws Exception If the connection to the database fails.
      */
 
-
     public function __construct(string $serverName,  string $userName, string $password, string $databaseName)
     {
         $this->dbConn = new mysqli($serverName, $userName, $password, $databaseName);
@@ -132,16 +131,20 @@ class DatabaseUtility
      * @return mysqli_result | bool The result of the execution.
      * @throws Exception If the statement execution fails.
      */
-    public function execute(mysqli_stmt $stmt, int &$insertedId = null): mysqli_result | bool
+    public function execute(mysqli_stmt $stmt): mysqli_result | bool
     {
         if ($stmt->execute()) {
-            $insertedId = $this->dbConn->insert_id;
             $result = $stmt->get_result();
             $stmt->close();
             return $result;
         } else {
             throw new Exception("Failed to execute statement: " . $stmt->error);
         }
+    }
+
+    public function getLastInsertedId(): int
+    {
+        return $this->dbConn->insert_id;
     }
 
     /**

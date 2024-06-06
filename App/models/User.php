@@ -2,23 +2,31 @@
 
 namespace App\Models;
 
+require "App/Helpers/Utility.php";
+
+use App\Helpers\DatabaseUtility;
+use App\Helpers\Utility;
 use Exception;
 use mysqli;
+use mysqli_stmt;
 
 /**
  * User class
  * 
  * The User class serves as the base class for all user types within the application,
- * providing common properties and methods that are essential for managing users info.
+ * providing common properties and methods that are essential for managing user information.
  * 
  * Attributes:
+ * - DatabaseUtility $dbUtility: The database utility object.
+ * - int $id: The unique identifier of the user.
  * - string $firstName: The first name of the user.
  * - string $lastName: The last name of the user.
  * - string $email: The email address of the user.
  * - string $phone: The phone number of the user.
  * 
  * Methods:
- * - __construct(string $firstName, string $lastName, string $email, string $phone): Constructs a new User object.
+ * - __construct(DatabaseUtility $databaseUtility, int $id, string $firstName, string $lastName, string $email, string $phone): Constructs a new User object.
+ * - getId(): int: Gets the id of the user.
  * - getFirstName(): string: Gets the first name of the user.
  * - setFirstName(string $firstName): void: Sets the first name of the user.
  * - getLastName(): string: Gets the last name of the user.
@@ -28,26 +36,35 @@ use mysqli;
  * - getPhone(): string: Gets the phone number of the user.
  * - setPhone(string $phone): void: Sets the phone number of the user.
  * - getFullName(): string: Gets the full name of the user.
+ * - save(): bool: Saves user data to the database.
+ * - update(): bool: Updates user data in the database.
+ * - delete(): bool: Deletes user data from the database.
+ * - updateFirstName(string $firstName): bool: Updates the first name of the user in the database.
+ * - updateLastName(string $lastName): bool: Updates the last name of the user in the database.
+ * - updateEmail(string $email): bool: Updates the email address of the user in the database.
+ * - updatePhone(string $phone): bool: Updates the phone number of the user in the database.
+ * - getUserById(DatabaseUtility $dbUtility, int $id): ?User: Retrieves a user by their ID from the database.
+ * - getUserByName(DatabaseUtility $dbUtility, string $firstName, string $lastName): ?User: Retrieves a user by their first and last name from the database.
  * 
  * Usage: 
  * It can be extended by more specific user types that implement additional functionalities and attributes
  * tailored to their specific roles within the application.
  */
 
+
 class User
 {
     /**
      * The connection to the database.
-     * @var mysqli
+     * @var DatabaseUtility
      */
-    private mysqli $dbConn;
+    protected DatabaseUtility $dbUtility;
 
     /**
      * The id of the user the primary key.
      * @var int
      */
-    private int $id;
-
+    private int $user_id;
 
     /**
      * The first name of the user.
@@ -76,47 +93,32 @@ class User
     /**
      * Construct a new User object.
      *
+     * @param DatabaseUtility $databaseUtility The database utility object.
+     * @param int $id The unique identifier of the user.
      * @param string $firstName The first name of the user.
      * @param string $lastName The last name of the user.
      * @param string $email The email of the user.
      * @param string $phone The phone number of the user.
      */
-    public function __construct(string $firstName, string $lastName, string $email, string $phone)
+    public function __construct(DatabaseUtility $databaseUtility, int $id, string $firstName, string $lastName, string $email, string $phone)
     {
-        $this->firstName = $firstName;
-        $this->lastName = $lastName;
-        $this->email = $email;
-        $this->phone = $phone;
+        $this->dbUtility = $databaseUtility;
+        $this->user_id = $id;
+        $this->setFirstName($firstName);
+        $this->setLastName($lastName);
+        $this->setEmail($email);
+        $this->setPhone($phone);
     }
 
-    /**
-     * Get the database connection.
-     *
-     * @return mysqli The mysqli database connection.
-     */
-    public function getDbConn(): mysqli
-    {
-        return $this->dbConn;
-    }
-
-    /**
-     * Set the database connection.
-     *
-     * @param mysqli $conn The mysqli database connection.
-     */
-    public function setDbConn(mysqli $conn): void
-    {
-        $this->dbConn = $conn;
-    }
 
     /**
      * Get the id of the user.
      *
      * @return int The id of the user.
      */
-    public function getId(): int
+    public function getUserId(): int
     {
-        return $this->id;
+        return $this->user_id;
     }
 
     /**
@@ -137,7 +139,7 @@ class User
      */
     public function setFirstName(string $firstName): void
     {
-        $this->firstName = $firstName;
+        $this->firstName = Utility::sanitize($firstName);
     }
 
     /**
@@ -158,7 +160,7 @@ class User
      */
     public function setLastName(string $lastName): void
     {
-        $this->lastName = $lastName;
+        $this->lastName = Utility::sanitize($lastName);
     }
 
     /**
@@ -179,7 +181,7 @@ class User
      */
     public function setEmail(string $email): void
     {
-        $this->email = $email;
+        $this->email = Utility::sanitize($email);
     }
 
     /**
@@ -200,13 +202,14 @@ class User
      */
     public function setPhone(string $phone): void
     {
-        $this->phone = $phone;
+        $this->phone = Utility::sanitize($phone);
     }
 
     /**
      * Get the full name for the user, 
      * The full name is the first name followed by a space and the last name.
-     * @return string The full name of the user
+     *
+     * @return string The full name of the user.
      */
     public function getFullName(): string
     {
@@ -218,28 +221,170 @@ class User
      *
      * @return bool True if the process was successful, false otherwise.
      */
-    public function save(): bool
+    protected function save(): bool
     {
-        if (!$this->dbConn) {
-            throw new Exception("Database connection not set.");
+        $sql = "INSERT INTO USERS (first_name,last_name,email,phone)
+        values (?,?,?,?)";
+        $stmt = $this->dbUtility->prepare(
+            $sql,
+            [$this->getFirstName(), $this->getLastName(), $this->getEmail(), $this->getPhone()]
+        );
+
+        $this->dbUtility->execute($stmt);
+        $this->user_id = $this->dbUtility->getLastInsertedId();
+        return true;
+    }
+
+    /**
+     * Update user data in the database.
+     *
+     * @return bool True if the process was successful, false otherwise.
+     */
+    protected function update(): bool
+    {
+        $sql = "UPDATE USERS SET first_name = ?,last_name = ?, email = ?, phone = ? where id = ?";
+
+        $stmt = $this->dbUtility->prepare(
+            $sql,
+            [$this->getFirstName(), $this->getLastName(), $this->getEmail(), $this->getPhone(), $this->getUserId()]
+        );
+
+        return $this->dbUtility->execute($stmt);
+    }
+
+    /**
+     * Update a specific field of the user.
+     *
+     * @param string $field The field to update.
+     * @param mixed $value The new value of the field.
+     * @return bool True if the update was successful, false otherwise.
+     */
+    private function updateField(string $field, $value): bool
+    {
+        $sql = "UPDATE USERS SET $field = ? WHERE id = ?";
+        $stmt = $this->dbUtility->prepare($sql, [$value, $this->getUserId()]);
+        return $this->dbUtility->execute($stmt);
+    }
+
+    /**
+     * Update the first name of the user.
+     *
+     * @param string $firstName The new first name of the user.
+     * @return bool True if the update was successful, false otherwise.
+     */
+    public function updateFirstName(string $firstName): bool
+    {
+        $this->setFirstName($firstName);
+        return $this->updateField('first_name', $firstName);
+    }
+
+    /**
+     * Update the last name of the user.
+     *
+     * @param string $lastName The new last name of the user.
+     * @return bool True if the update was successful, false otherwise.
+     */
+    public function updateLastName(string $lastName): bool
+    {
+        $this->setLastName($lastName);
+        return $this->updateField('last_name', $lastName);
+    }
+
+    /**
+     * Update the email of the user.
+     *
+     * @param string $email The new email of the user.
+     * @return bool True if the update was successful, false otherwise.
+     */
+    public function updateEmail(string $email): bool
+    {
+        $this->setEmail($email);
+        return $this->updateField('email', $email);
+    }
+
+    /**
+     * Update the phone number of the user.
+     *
+     * @param string $phone The new phone number of the user.
+     * @return bool True if the update was successful, false otherwise.
+     */
+    public function updatePhone(string $phone): bool
+    {
+        $this->setPhone($phone);
+        return $this->updateField('phone', $phone);
+    }
+
+    /**
+     * Delete user data from the database.
+     *
+     * @return bool True if the process was successful, false otherwise.
+     */
+    protected function delete(): bool
+    {
+        $sql = "DELETE FROM USERS where id = ?";
+
+        $stmt = $this->dbUtility->prepare(
+            $sql,
+            [$this->getUserId()]
+        );
+
+        return $this->dbUtility->execute($stmt);
+    }
+
+    /**
+     * Retrieve a user by their ID from the database.
+     *
+     * @param DatabaseUtility $dbUtility The database utility object.
+     * @param int $id The ID of the user to retrieve.
+     * @return User|null The user object if found, null otherwise.
+     */
+    protected static function getUserById(DatabaseUtility $dbUtility, int $id): ?User
+    {
+        $sql = "SELECT * FROM USERS WHERE ID = ?";
+        $stmt = $dbUtility->prepare($sql, [$id]);
+        $result = $dbUtility->execute($stmt);
+
+        if ($result->num_rows == 1) {
+            $row = $dbUtility->getmysqliResultAsArray($result);
+            return new User(
+                $dbUtility,
+                $row[0]["id"],
+                $row[0]['first_name'],
+                $row[0]['last_name'],
+                $row[0]['email'],
+                $row[0]['phone']
+            );
         }
 
-        $sql = "INSERT INTO users (first_name, last_name,email,phone) VALUES (?, ?,?,?)";
+        return null;
+    }
 
-        if ($stmt = $this->dbConn->prepare($sql)) {
-            $stmt->bind_param("sss", $this->firstName, $this->lastName, $this->email, $this->phone);
-            $insertedId = $this->dbConn->insert_id;
-            $result = $stmt->execute();
-            $stmt->close();
-        } else {
-            throw new Exception("Failed to prepare statement: " . $this->dbConn->error);
+    /**
+     * Retrieve a user by their first and last name from the database.
+     *
+     * @param DatabaseUtility $dbUtility The database utility object.
+     * @param string $firstName The first name of the user to retrieve.
+     * @param string $lastName The last name of the user to retrieve.
+     * @return User|null The user object if found, null otherwise.
+     */
+    protected static function getUserByName(DatabaseUtility $dbUtility, string $firstName, string $lastName): ?User
+    {
+        $sql = "SELECT * FROM USERS WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)";
+        $stmt = $dbUtility->prepare($sql, [$firstName, $lastName]);
+        $result = $dbUtility->execute($stmt);
+
+        if ($result->num_rows == 1) {
+            $row = $dbUtility->getmysqliResultAsArray($result);
+            return new User(
+                $dbUtility,
+                $row[0]["id"],
+                $row[0]['first_name'],
+                $row[0]['last_name'],
+                $row[0]['email'],
+                $row[0]['phone']
+            );
         }
 
-        if ($result) {
-            $this->$insertedId;
-            return true;
-        } else {
-            throw new Exception("Failed to execute statement: " . $stmt->error);
-        }
+        return null;
     }
 }

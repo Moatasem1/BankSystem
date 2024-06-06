@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
-use Exception;
-use mysqli;
+require "App/models/User.php";
 
-require_once "../config/database_connection.php";
+use App\Helpers\DatabaseUtility;
+use App\Helpers\Utility;
+use App\Models\User;
 
 /**
  * Client class
@@ -14,18 +15,22 @@ require_once "../config/database_connection.php";
  * properties and methods essential for managing client-specific information.
  * 
  * Attributes:
- * - string $accountNumber: The account number for the client, which is the primary key
- * - string $pinCode: The PIN code for the client's account.
- * - string $accountBalance: The account balance for the client.
+ * - int $accountNumber: The account number for the client, which is the primary key.
+ * - string $pinCode: The hashed PIN code for the client's account.
+ * - float $accountBalance: The account balance for the client.
  * 
  * Methods:
- * - __construct(string $firstName, string $lastName, string $email, string $phone, string $accountNumber, string $pinCode, string $accountBalance): Constructs a new Client object.
- * - getAccountNumber(): string: Gets the account number of the client.
- * - setAccountNumber(string $accountNumber): void: Sets the account number of the client.
- * - getPinCode(): string: Gets the PIN code of the client.
- * - setPinCode(string $pinCode): void: Sets the PIN code of the client.
- * - getAccountBalance(): string: Gets the account balance of the client.
- * - setAccountBalance(string $accountBalance): void: Sets the account balance of the client.
+ * - __construct(DatabaseUtility $databaseUtility, int $accountNumber, string $userId, string $firstName, string $lastName, string $email, string $phone, string $pinCode, string $accountBalance): Constructs a new Client object.
+ * - getAccountNumber(): int: Gets the account number of the client.
+ * - getPinCode(): string: Gets the hashed PIN code of the client.
+ * - setPinCode(string $pinCode): void: Sets and hashes the PIN code of the client.
+ * - getAccountBalance(): float: Gets the account balance of the client.
+ * - setAccountBalance(float $accountBalance): void: Sets the account balance of the client.
+ * - save(): bool: Saves client data to the database.
+ * - update(): bool: Updates client data in the database.
+ * - delete(): bool: Deletes client data from the database.
+ * - getClientById(DatabaseUtility $dbUtility, int $accountNumber): ?Client: Retrieves a client by their account number from the database.
+ * - getClientByName(DatabaseUtility $dbUtility, string $firstName, string $lastName): ?Client: Retrieves a client by their first and last name from the database.
  * 
  * Inherited Methods from User:
  * - getFirstName(): string: Gets the first name of the user.
@@ -37,100 +42,71 @@ require_once "../config/database_connection.php";
  * - getPhone(): string: Gets the phone number of the user.
  * - setPhone(string $phone): void: Sets the phone number of the user.
  * - getFullName(): string: Gets the full name of the user.
- * 
- * Usage: This class extends the User class and adds functionalities specific to clients in the banking application.
  */
 class Client extends User
 {
     /**
-     * The connection to the database.
-     * @var mysqli
+     * The account number of the client, the primary key.
+     * @var int
      */
-    private mysqli $dbConn;
+    private int $accountNumber;
 
     /**
-     * The account number for the client.
-     * @var string
-     */
-    private string $accountNumber;
-
-    /**
-     * The PIN code for the client's account.
+     * The hashed PIN code of the client.
      * @var string
      */
     private string $pinCode;
 
     /**
-     * The account balance for the client.
-     * @var string
+     * The account balance of the client.
+     * @var float
      */
-    private string $accountBalance;
+    private float $accountBalance;
 
     /**
      * Construct a new Client object.
      *
-     * @param string $firstName The first name of the client.
-     * @param string $lastName The last name of the client.
-     * @param string $email The email of the client.
-     * @param string $phone The phone number of the client.
-     * @param string $accountNumber The account number for the client.
-     * @param string $pinCode The PIN code for the client's account.
-     * @param string $accountBalance The account balance for the client.
+     * @param DatabaseUtility $databaseUtility The database utility object.
+     * @param int $accountNumber The account number of the client.
+     * @param string $userId The unique identifier of the user.
+     * @param string $firstName The first name of the user.
+     * @param string $lastName The last name of the user.
+     * @param string $email The email of the user.
+     * @param string $phone The phone number of the user.
+     * @param string $pinCode The PIN code of the client's account.
+     * @param string $accountBalance The account balance of the client.
      */
-    public function __construct(string $firstName, string $lastName, string $email, string $phone, string $accountNumber, string $pinCode, string $accountBalance)
-    {
-        parent::__construct($firstName, $lastName, $email, $phone);
-        $this->accountNumber = $this->sanitize($accountNumber);
-        $this->pinCode = $this->sanitize($pinCode);
-        $this->accountBalance = $this->sanitize($accountBalance);
-    }
-
-    /**
-     * Sanitize client info.
-     * 
-     * @param string $data The data to be sanitized.
-     * @return string The sanitized data.
-     */
-    private function sanitize(string $data): string
-    {
-        return trim(htmlspecialchars($data, ENT_QUOTES, 'UTF-8'));
-    }
-
-    /**
-     * Set the database connection.
-     *
-     * @param mysqli $conn The connection to the database.
-     */
-    public function setConnection(mysqli $conn): void
-    {
-        $this->dbConn = $conn;
-    }
-
-    /**
-     * Get the database connection.
-     *
-     * @return mysqli The connection to the database.
-     */
-    public function getConnection(): mysqli
-    {
-        return $this->dbConn;
+    public function __construct(
+        DatabaseUtility $databaseUtility,
+        int $accountNumber,
+        string $userId,
+        string $firstName,
+        string $lastName,
+        string $email,
+        string $phone,
+        string $pinCode,
+        string $accountBalance
+    ) {
+        parent::__construct($databaseUtility, $userId, $firstName, $lastName, $email, $phone);
+        $this->setAccountBalance($accountBalance);
+        $this->setPinCode($pinCode);
+        $this->accountNumber = $accountNumber;
     }
 
     /**
      * Get the account number of the client.
      *
-     * @return string The account number of the client.
+     * @return int The account number of the client.
      */
-    public function getAccountNumber(): string
+    public function getAccountNumber(): int
     {
         return $this->accountNumber;
     }
 
-
     /**
-     * Get the PIN code of the client.
+     * Get the hashed PIN code of the client.
      *
-     * @return string The PIN code of the client.
+     * @return string The hashed PIN code of the client.
      */
     public function getPinCode(): string
     {
@@ -138,21 +114,22 @@ class Client extends User
     }
 
     /**
-     * Set the PIN code of the client.
+     * Set and hash the PIN code of the client.
      *
      * @param string $pinCode The new PIN code of the client.
+     * @return void
      */
     public function setPinCode(string $pinCode): void
     {
-        $this->pinCode = $this->sanitize($pinCode);
+        $this->pinCode = password_hash(Utility::sanitize($pinCode), PASSWORD_DEFAULT);
     }
 
     /**
      * Get the account balance of the client.
      *
-     * @return string The account balance of the client.
+     * @return float The account balance of the client.
      */
-    public function getAccountBalance(): string
+    public function getAccountBalance(): float
     {
         return $this->accountBalance;
     }
@@ -160,11 +137,12 @@ class Client extends User
     /**
      * Set the account balance of the client.
      *
-     * @param string $accountBalance The new account balance of the client.
+     * @param float $accountBalance The new account balance of the client.
+     * @return void
      */
-    public function setAccountBalance(string $accountBalance): void
+    public function setAccountBalance(float $accountBalance): void
     {
-        $this->accountBalance = $this->sanitize($accountBalance);
+        $this->accountBalance = ($accountBalance > 0) ? $accountBalance : 0;
     }
 
     /**
@@ -174,24 +152,129 @@ class Client extends User
      */
     public function save(): bool
     {
-        if (!$this->dbConn) {
-            throw new Exception("Database connection not set.");
+        parent::save();
+        $sql = "INSERT INTO CLIENTS (user_id, pin_code, account_balance) VALUES (?, ?, ?)";
+        $stmt = $this->dbUtility->prepare(
+            $sql,
+            [parent::getUserId(), $this->getPinCode(), $this->getAccountBalance()]
+        );
+
+        $this->dbUtility->execute($stmt);
+        $this->accountNumber = $this->dbUtility->getLastInsertedId();
+
+        return true;
+    }
+
+    /**
+     * Update client data in the database.
+     *
+     * @return bool True if the process was successful, false otherwise.
+     */
+    public function update(): bool
+    {
+        parent::update();
+        $sql = "UPDATE CLIENTS SET pin_code = ?, account_balance = ? WHERE account_number = ?";
+
+        $stmt = $this->dbUtility->prepare(
+            $sql,
+            [$this->getPinCode(), $this->getAccountBalance(), $this->getAccountNumber()]
+        );
+
+        return $this->dbUtility->execute($stmt);
+    }
+
+    /**
+     * Delete client data from the database.
+     *
+     * @return bool True if the process was successful, false otherwise.
+     */
+    public function delete(): bool
+    {
+        $sql = "DELETE FROM CLIENTS WHERE account_number = ?";
+
+        $stmt = $this->dbUtility->prepare(
+            $sql,
+            [$this->getAccountNumber()]
+        );
+
+        $this->dbUtility->execute($stmt);
+
+        return  parent::delete();
+    }
+
+    /**
+     * Retrieve a client by their account number from the database.
+     *
+     * @param DatabaseUtility $dbUtility The database utility object.
+     * @param int $accountNumber The account number of the client to retrieve.
+     * @return Client|null The client object if found, null otherwise.
+     */
+    public static function getClientByAccountNumber(DatabaseUtility $dbUtility, int $accountNumber): ?Client
+    {
+        $sql = "SELECT * FROM CLIENTS WHERE account_number = ?";
+        $stmt = $dbUtility->prepare($sql, [$accountNumber]);
+        $result = $dbUtility->execute($stmt);
+
+        if ($result->num_rows == 1) {
+            $row = $dbUtility->getmysqliResultAsArray($result);
+
+            $user = parent::getUserById($dbUtility, $row[0]["user_id"]);
+            return new Client(
+                $dbUtility,
+                $row[0]["account_number"],
+                $row[0]['user_id'],
+                $user->getFirstName(),
+                $user->getLastName(),
+                $user->getEmail(),
+                $user->getPhone(),
+                $row[0]["pin_code"],
+                $row[0]["account_balance"]
+            );
         }
 
-        $sql = "INSERT INTO client (account_number, pin_code, account_balance) VALUES (?, ?, ?)";
+        return null;
+    }
 
-        if ($stmt = $this->dbConn->prepare($sql)) {
-            $stmt->bind_param("sss", $this->accountNumber, $this->pinCode, $this->accountBalance);
-            $result = $stmt->execute();
-            $stmt->close();
-        } else {
-            throw new Exception("Failed to prepare statement: " . $this->dbConn->error);
+    /**
+     * Retrieve a client by their first and last name from the database.
+     *
+     * @param DatabaseUtility $dbUtility The database utility object.
+     * @param string $firstName The first name of the client to retrieve.
+     * @param string $lastName The last name of the client to retrieve.
+     * @return Client|null The client object if found, null otherwise.
+     */
+    public static function getClientByName(DatabaseUtility $dbUtility, string $firstName, string $lastName): ?Client
+    {
+        $user = parent::getUserByName($dbUtility, $firstName, $lastName);
+
+        $sql = "SELECT * FROM CLIENTS WHERE user_id = ?";
+        $stmt = $dbUtility->prepare($sql, [$user->getUserId()]);
+        $result = $dbUtility->execute($stmt);
+
+        if ($result->num_rows == 1) {
+            $row = $dbUtility->getmysqliResultAsArray($result);
+
+            return new Client(
+                $dbUtility,
+                $row[0]["account_number"],
+                $row[0]['user_id'],
+                $user->getFirstName(),
+                $user->getLastName(),
+                $user->getEmail(),
+                $user->getPhone(),
+                $row[0]["pin_code"],
+                $row[0]["account_balance"]
+            );
         }
 
-        if ($result) {
-            return true;
-        } else {
-            throw new Exception("Failed to execute statement: " . $stmt->error);
-        }
+        return null;
     }
 }
+
+
+/**
+ * add update account and pincode
+ * add verficate pincode
+ * update doc 
+ * update inherit methodes and attributes
+ */
