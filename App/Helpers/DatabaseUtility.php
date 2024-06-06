@@ -26,7 +26,7 @@ use Exception;
  * Example usage:
  * 
  * // Create a new instance of DatabaseUtility with a database connection
- * $dbUtility = new DatabaseUtility("localhost", "database", "username", "password");
+ * $dbUtility = new DatabaseUtility("localhost", "username", "password","database");
  * 
  * // Prepare and execute a simple SELECT statement
  * $sql = "SELECT * FROM users WHERE id = ?";
