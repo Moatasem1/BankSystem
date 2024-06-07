@@ -27,4 +27,4 @@ select * from users;
 select * from clients;
 
 select * from users 
-join clients on user_id
+ join clients on user_id

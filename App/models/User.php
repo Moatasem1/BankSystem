@@ -100,7 +100,7 @@ class User
      * @param string $email The email of the user.
      * @param string $phone The phone number of the user.
      */
-    public function __construct(DatabaseUtility $databaseUtility, int $id, string $firstName, string $lastName, string $email, string $phone)
+    public function __construct(DatabaseUtility $databaseUtility, ?int $id, string $firstName, string $lastName, string $email, string $phone)
     {
         $this->dbUtility = $databaseUtility;
         $this->user_id = $id;
